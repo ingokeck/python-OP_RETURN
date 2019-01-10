@@ -1,8 +1,9 @@
-# OP_RETURN.py
+# op_return_dogecoin.py
 #
 # Python script to generate and retrieve OP_RETURN dogecoin transactions
 #
-# Based on bitcoin python-OP_RETURN, Copyright (c) Coin Sciences Ltd
+# Based on bitcoin python-OP_RETURN,
+# Copyright (c) Coin Sciences Ltd
 # (https://github.com/coinspark/python-OP_RETURN)
 # Adaptions and changes for Dogecoin by Ingo Keck
 #
@@ -26,7 +27,6 @@
 
 
 import subprocess, json, time, random, os.path, binascii, struct, string, re, hashlib
-import urllib2
 
 # Python 2-3 compatibility logic
 
@@ -34,7 +34,10 @@ try:
     basestring
 except NameError:
     basestring = str
-
+try:
+    from urllib2 import HTTPError
+except ImportError:
+    from urllib.request import HTTPError
 # User-defined quasi-constants
 
 OP_RETURN_DOGECOIN_IP = '127.0.0.1'  # IP address of your dogecoin node
@@ -48,8 +51,8 @@ else:
     OP_RETURN_DOGECOIN_USER = ''  # leave empty to read from ~/.dogecoin/dogecoin.conf (Unix only)
     OP_RETURN_DOGECOIN_PASSWORD = ''  # leave empty to read from ~/.dogecoin/dogecoin.conf (Unix only)
 
-OP_RETURN_BTC_FEE = 1  # BTC fee to pay per transaction
-OP_RETURN_BTC_DUST = 1  # omit BTC outputs smaller than this
+OP_RETURN_BTC_FEE = 1  # DOGE fee to pay per transaction
+OP_RETURN_BTC_DUST = 1  # omit DOGE outputs smaller than this
 
 OP_RETURN_MAX_BYTES = 80  # maximum bytes in an OP_RETURN (80 as of Dogecoin 0.10)
 OP_RETURN_MAX_BLOCKS = 10  # maximum number of blocks to try when retrieving data
@@ -69,6 +72,8 @@ def OP_RETURN_send(send_address, send_amount, metadata, testnet=False):
     :return: signed raw transaction
     """
     # Validate some parameters
+    if send_amount>10:
+        return {'error': 'dont send crazy amounts'}
 
     if not OP_RETURN_dogecoin_check(testnet):
         return {'error': 'Please check Dogecoin Core is running and OP_RETURN_DOGECOIN_* constants are set correctly'}
@@ -78,12 +83,14 @@ def OP_RETURN_send(send_address, send_amount, metadata, testnet=False):
         return {'error': 'Send address could not be validated: ' + send_address}
 
     if isinstance(metadata, basestring):
-        metadata = metadata.encode('utf-8')  # convert to binary string
-
+        try:
+            metadata = metadata.encode('latin1')  # convert to binary string
+        except:
+            metadata = metadata.encode('utf-8') # will make message much longer
     metadata_len = len(metadata)
 
-    if metadata_len > 65536:
-        return {'error': 'This library only supports metadata up to 65536 bytes in size'}
+    #if metadata_len > 65536:
+    #    return {'error': 'This library only supports metadata up to 65536 bytes in size'}
 
     if metadata_len > OP_RETURN_MAX_BYTES:
         return {'error': 'Metadata has ' + str(metadata_len) + ' bytes but is limited to ' + str(
@@ -207,10 +214,11 @@ def OP_RETURN_get(txid, testnet=False):
     """
     if not OP_RETURN_dogecoin_check(testnet):
         return {'error': 'Please check Dogecoin Core is running and OP_RETURN_DOGECOIN_* constants are set correctly'}
+
     try:
         rawtx = OP_RETURN_dogecoin_cmd('getrawtransaction', testnet, txid)
-    except urllib2.HTTPError as e:
-        print e.reason
+    except HTTPError as e:
+        print(e.reason)
         return None
     unpackedtx = OP_RETURN_unpack_txn(OP_RETURN_hex_to_bin(rawtx))
     op_return = OP_RETURN_find_txn_data(unpackedtx)
@@ -341,6 +349,9 @@ def OP_RETURN_select_inputs(total_amount, testnet):
     input_amount = 0
 
     for unspent_input in unspent_inputs:
+        if not unspent_input['spendable']:
+            # amount is not spendable
+            continue
         inputs_spend.append(unspent_input)
 
         input_amount += unspent_input['amount']
@@ -376,9 +387,9 @@ def OP_RETURN_create_txn(inputs, outputs, metadata, metadata_pos, testnet):
     if metadata_len <= 75:
         payload = bytearray((metadata_len,)) + metadata  # length byte + data (https://en.dogecoin.it/wiki/Script)
     elif metadata_len <= 256:
-        payload = "\x4c" + bytearray((metadata_len,)) + metadata  # OP_PUSHDATA1 format
+        payload = b"\x4c" + bytearray((metadata_len,)) + metadata  # OP_PUSHDATA1 format
     else:
-        payload = "\x4d" + bytearray((metadata_len % 256,)) + bytearray(
+        payload = b"\x4d" + bytearray((metadata_len % 256,)) + bytearray(
             (int(metadata_len / 256),)) + metadata  # OP_PUSHDATA2 format
 
     metadata_pos = min(max(0, metadata_pos), len(txn_unpacked['vout']))  # constrain to valid values
@@ -510,7 +521,7 @@ def OP_RETURN_dogecoin_cmd(command, testnet, *args):  # more params are read fro
         user = OP_RETURN_DOGECOIN_USER
         password = OP_RETURN_DOGECOIN_PASSWORD
 
-        if not (len(port) and len(user) and len(password)):
+        if not (port and user and password):
             if os.path.exists(os.path.expanduser('~') + '/.dogecoin/dogecoin.conf'):
                 conf_lines = open(os.path.expanduser('~') + '/.dogecoin/dogecoin.conf').readlines()
             elif os.path.exists(os.path.expanduser('~') +
@@ -538,10 +549,10 @@ def OP_RETURN_dogecoin_cmd(command, testnet, *args):  # more params are read fro
 
         try:
             from urllib2 import HTTPPasswordMgrWithDefaultRealm, HTTPBasicAuthHandler, build_opener, install_opener, \
-                urlopen
+                urlopen, HTTPError
         except ImportError:
             from urllib.request import HTTPPasswordMgrWithDefaultRealm, HTTPBasicAuthHandler, build_opener, \
-                install_opener, urlopen
+                install_opener, urlopen, HTTPError
 
         passman = HTTPPasswordMgrWithDefaultRealm()
         passman.add_password(None, url, user, password)
