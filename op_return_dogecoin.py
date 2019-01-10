@@ -51,8 +51,8 @@ else:
     OP_RETURN_DOGECOIN_USER = ''  # leave empty to read from ~/.dogecoin/dogecoin.conf (Unix only)
     OP_RETURN_DOGECOIN_PASSWORD = ''  # leave empty to read from ~/.dogecoin/dogecoin.conf (Unix only)
 
-OP_RETURN_BTC_FEE = 1  # DOGE fee to pay per transaction
-OP_RETURN_BTC_DUST = 1  # omit DOGE outputs smaller than this
+OP_RETURN_DOGE_FEE = 1  # DOGE fee to pay per transaction
+OP_RETURN_DOGE_DUST = 0.0000001  # omit DOGE outputs smaller than this
 
 OP_RETURN_MAX_BYTES = 80  # maximum bytes in an OP_RETURN (80 as of Dogecoin 0.10)
 OP_RETURN_MAX_BLOCKS = 10  # maximum number of blocks to try when retrieving data
@@ -98,7 +98,7 @@ def OP_RETURN_send(send_address, send_amount, metadata, testnet=False):
 
     # Calculate amounts and choose inputs
 
-    output_amount = send_amount + OP_RETURN_BTC_FEE
+    output_amount = send_amount + OP_RETURN_DOGE_FEE
 
     inputs_spend = OP_RETURN_select_inputs(output_amount, testnet)
 
@@ -113,7 +113,7 @@ def OP_RETURN_send(send_address, send_amount, metadata, testnet=False):
 
     outputs = {send_address: send_amount}
 
-    if change_amount >= OP_RETURN_BTC_DUST:
+    if change_amount >= OP_RETURN_DOGE_DUST:
         outputs[change_address] = change_amount
 
     raw_txn = OP_RETURN_create_txn(inputs_spend['inputs'], outputs, metadata, len(outputs), testnet)
@@ -144,7 +144,7 @@ def OP_RETURN_store(data, testnet=False):
 
     # Calculate amounts and choose first inputs to use
 
-    output_amount = OP_RETURN_BTC_FEE * int(
+    output_amount = OP_RETURN_DOGE_FEE * int(
         (data_len + OP_RETURN_MAX_BYTES - 1) / OP_RETURN_MAX_BYTES)  # number of transactions required
 
     inputs_spend = OP_RETURN_select_inputs(output_amount, testnet)
@@ -167,13 +167,13 @@ def OP_RETURN_store(data, testnet=False):
         # Some preparation for this iteration
 
         last_txn = ((data_ptr + OP_RETURN_MAX_BYTES) >= data_len)  # is this the last tx in the chain?
-        change_amount = input_amount - OP_RETURN_BTC_FEE
+        change_amount = input_amount - OP_RETURN_DOGE_FEE
         metadata = data[data_ptr:data_ptr + OP_RETURN_MAX_BYTES]
 
         # Build and send this transaction
 
         outputs = {}
-        if change_amount >= OP_RETURN_BTC_DUST:  # might be skipped for last transaction
+        if change_amount >= OP_RETURN_DOGE_DUST:  # might be skipped for last transaction
             outputs[change_address] = change_amount
 
         raw_txn = OP_RETURN_create_txn(inputs, outputs, metadata, len(outputs) if last_txn else 0, testnet)
